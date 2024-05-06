@@ -27,21 +27,15 @@ queue *queue_init(int size)
 int queue_put(queue *q, struct element *x)
 {
 
-  pthread_mutex_lock(&q->lock);
-  // wait if queue is full (needs to be implemented)
-  while (queue_full(q))
+  if (queue_full(q))
   {
-    printf("Queue is full\n");
-    pthread_cond_wait(&q->not_full, &q->lock);
+    return -1;
   }
 
   // need to do a deep copy?
   q->arr[q->tail] = *x;
   q->tail = (q->tail + 1) % q->maxSize;
   q->qSize++;
-
-  pthread_cond_broadcast(&q->not_empty);
-  pthread_mutex_unlock(&q->lock);
 
   // return 0 if successfull?
   return 0;
@@ -50,30 +44,24 @@ int queue_put(queue *q, struct element *x)
 // To Dequeue an element.
 struct element *queue_get(queue *q)
 {
-  struct element *element = NULL;
 
-  // wait if queue is empty (needs to be implemented)
-  pthread_mutex_lock(&q->lock);
-  while (queue_empty(q))
+  if (queue_empty(q))
   {
-    printf("Queue is empty\n");
-    pthread_cond_wait(&q->not_empty, &q->lock);
+    return NULL;
   }
 
-  // return the element but also dequeue it?
-  printf("where is loop\n");
-
   // use malloc
-  element = (struct element *)malloc(sizeof(struct element));
+  struct element *element = (struct element *)malloc(sizeof(struct element));
+  if (element == NULL)
+  {
+    return NULL;
+  }
 
   // might be an issue here (do or don't dereference element?):
   *element = q->arr[q->head];
 
   q->head = (q->head + 1) % q->maxSize;
   q->qSize--;
-
-  pthread_cond_broadcast(&q->not_full);
-  pthread_mutex_unlock(&q->lock);
 
   return element;
 }
@@ -90,6 +78,7 @@ int queue_empty(queue *q)
   {
     return 0;
   }*/
+  printf("Queue empty: %d\n", q->qSize);
 
   return q->qSize == 0;
 }
@@ -105,6 +94,8 @@ int queue_full(queue *q)
   {
     return 0;
   }*/
+
+  printf("Queue full: %d\n", q->qSize);
 
   return q->qSize == q->maxSize;
 }
