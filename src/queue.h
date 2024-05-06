@@ -1,5 +1,6 @@
 // SSOO-P3 23/24
 #include <pthread.h>
+#include <semaphore.h>
 
 #ifndef HEADER_FILE
 #define HEADER_FILE
@@ -30,9 +31,9 @@ typedef struct queue
   // queue has tail pointer
   int tail;
 
+  sem_t empty_slots;
+  sem_t filled_slots;
   pthread_mutex_t lock;
-  pthread_cond_t not_empty;
-  pthread_cond_t not_full;
 
 } queue;
 

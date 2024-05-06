@@ -60,18 +60,11 @@ void *producer(void *args)
 
     struct element curOp = data->operations[i];
 
-    pthread_mutex_lock(&data->buffer->lock);
-
-    while (queue_full(data->buffer))
+    if (queue_put(data->buffer, &curOp) != 0)
     {
-      printf("Producer waiting: buffer_full=%d\n", queue_full(data->buffer));
-      pthread_cond_wait(&data->buffer->not_full, &data->buffer->lock);
+      fprintf(stderr, "Error, couldn't put element in queue\n");
+      continue;
     }
-
-    queue_put(data->buffer, &curOp);
-
-    pthread_cond_signal(&data->buffer->not_empty);
-    pthread_mutex_unlock(&data->buffer->lock);
   }
 
   pthread_mutex_lock(&prod_ctrl.lock);
@@ -97,34 +90,22 @@ void *consumer(void *args)
   {
 
     pthread_mutex_lock(&prod_ctrl.lock);
-
-    bool empty = queue_empty(data->buffer);
     printf("Consumer waiting: active_producers=%d, buffer_empty=%d\n", prod_ctrl.active_producers, queue_empty(data->buffer));
 
-    while (prod_ctrl.active_producers > 0 && empty)
-    {
-      pthread_cond_wait(&prod_ctrl.alldone, &prod_ctrl.lock);
-      empty = queue_empty(data->buffer);
-    }
-    if (prod_ctrl.active_producers == 0 && empty)
-    {
-      pthread_mutex_unlock(&prod_ctrl.lock);
-      break;
-    }
+    bool done = prod_ctrl.active_producers == 0 && queue_empty(data->buffer);
     pthread_mutex_unlock(&prod_ctrl.lock);
 
-    pthread_mutex_lock(&data->buffer->lock);
+    if (done)
+    {
+      break;
+    }
 
     // once there is an element we can extract it
     curOp = (queue_get(data->buffer));
     if (curOp == NULL)
     {
-      pthread_mutex_unlock(&data->buffer->lock);
       continue;
     }
-
-    pthread_cond_signal(&data->buffer->not_full);
-    pthread_mutex_unlock(&data->buffer->lock);
 
     printf("Consuming: Product ID=%d, Operation=%d, Units=%d\n", curOp->product_id, curOp->op, curOp->units);
 

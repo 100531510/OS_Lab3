@@ -17,8 +17,8 @@ queue *queue_init(int size)
   q->tail = 0;
 
   pthread_mutex_init(&q->lock, NULL);
-  pthread_cond_init(&q->not_empty, NULL);
-  pthread_cond_init(&q->not_full, NULL);
+  sem_init(&q->empty_slots, 0, size);
+  sem_init(&q->filled_slots, 0, 0);
 
   return q;
 }
@@ -27,8 +27,16 @@ queue *queue_init(int size)
 int queue_put(queue *q, struct element *x)
 {
 
+  if (sem_wait(&q->empty_slots) != 0)
+  {
+    return -1;
+  }
+
+  pthread_mutex_lock(&q->lock);
+
   if (queue_full(q))
   {
+    pthread_mutex_unlock(&q->lock);
     return -1;
   }
 
@@ -37,6 +45,8 @@ int queue_put(queue *q, struct element *x)
   q->tail = (q->tail + 1) % q->maxSize;
   q->qSize++;
 
+  pthread_mutex_unlock(&q->lock);
+  sem_post(&q->filled_slots);
   // return 0 if successfull?
   return 0;
 }
@@ -44,11 +54,8 @@ int queue_put(queue *q, struct element *x)
 // To Dequeue an element.
 struct element *queue_get(queue *q)
 {
-
-  if (queue_empty(q))
-  {
-    return NULL;
-  }
+  sem_wait(&q->filled_slots);
+  pthread_mutex_lock(&q->lock);
 
   // use malloc
   struct element *element = (struct element *)malloc(sizeof(struct element));
@@ -63,39 +70,21 @@ struct element *queue_get(queue *q)
   q->head = (q->head + 1) % q->maxSize;
   q->qSize--;
 
+  pthread_mutex_unlock(&q->lock);
+  sem_post(&q->empty_slots);
+
   return element;
 }
 
 // To check queue state
 int queue_empty(queue *q)
 {
-  // return 1 if queue is empty
-  /*if (q->qSize == 0)
-  {
-    return 1;
-  }
-  else
-  {
-    return 0;
-  }*/
-  printf("Queue empty: %d\n", q->qSize);
 
   return q->qSize == 0;
 }
 
 int queue_full(queue *q)
 {
-  // return 1 if queue is full
-  /*if (q->qSize == q->maxSize)
-  {
-    return 1;
-  }
-  else
-  {
-    return 0;
-  }*/
-
-  printf("Queue full: %d\n", q->qSize);
 
   return q->qSize == q->maxSize;
 }
@@ -103,10 +92,10 @@ int queue_full(queue *q)
 // To destroy the queue and free the resources
 int queue_destroy(queue *q)
 {
+  sem_destroy(&q->empty_slots);
+  sem_destroy(&q->filled_slots);
   free(q->arr);
   pthread_mutex_destroy(&q->lock);
-  pthread_cond_destroy(&q->not_empty);
-  pthread_cond_destroy(&q->not_full);
   free(q);
   return 0;
 }
