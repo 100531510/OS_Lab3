@@ -29,8 +29,9 @@ int queue_put(queue *q, struct element *x)
 
   pthread_mutex_lock(&q->lock);
   // wait if queue is full (needs to be implemented)
-  while (q->qSize == q->maxSize)
+  while (queue_full(q))
   {
+    printf("Queue is full\n");
     pthread_cond_wait(&q->not_full, &q->lock);
   }
 
@@ -39,7 +40,7 @@ int queue_put(queue *q, struct element *x)
   q->tail = (q->tail + 1) % q->maxSize;
   q->qSize++;
 
-  pthread_cond_signal(&q->not_empty);
+  pthread_cond_broadcast(&q->not_empty);
   pthread_mutex_unlock(&q->lock);
 
   // return 0 if successfull?
@@ -53,12 +54,14 @@ struct element *queue_get(queue *q)
 
   // wait if queue is empty (needs to be implemented)
   pthread_mutex_lock(&q->lock);
-  while (q->qSize == 0)
+  while (queue_empty(q))
   {
+    printf("Queue is empty\n");
     pthread_cond_wait(&q->not_empty, &q->lock);
   }
 
   // return the element but also dequeue it?
+  printf("where is loop\n");
 
   // use malloc
   element = (struct element *)malloc(sizeof(struct element));
@@ -69,7 +72,7 @@ struct element *queue_get(queue *q)
   q->head = (q->head + 1) % q->maxSize;
   q->qSize--;
 
-  pthread_cond_signal(&q->not_full);
+  pthread_cond_broadcast(&q->not_full);
   pthread_mutex_unlock(&q->lock);
 
   return element;
@@ -79,27 +82,31 @@ struct element *queue_get(queue *q)
 int queue_empty(queue *q)
 {
   // return 1 if queue is empty
-  if (q->qSize == 0)
+  /*if (q->qSize == 0)
   {
     return 1;
   }
   else
   {
     return 0;
-  }
+  }*/
+
+  return q->qSize == 0;
 }
 
 int queue_full(queue *q)
 {
   // return 1 if queue is full
-  if (q->qSize == q->maxSize)
+  /*if (q->qSize == q->maxSize)
   {
     return 1;
   }
   else
   {
     return 0;
-  }
+  }*/
+
+  return q->qSize == q->maxSize;
 }
 
 // To destroy the queue and free the resources
