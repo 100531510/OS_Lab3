@@ -13,7 +13,6 @@
 #include <sys/wait.h>
 
 pthread_mutex_t mutex;
-pthread_mutex_t Cmutex;
 pthread_cond_t not_full;
 pthread_cond_t not_empty;
 
@@ -33,14 +32,12 @@ typedef struct {
   int opNum;
 } associated_data;
 
-int CurrOpNum = 0;
 // produce function
-void produce(void* args, char* tempMsg, char* finalMsg){
+void produce(void* args){ // Add the temporal and final messages as arguments to debug
   struct element curOp;
   //Get the data from the struct: 
   associated_data* data = (associated_data*)args;
 
-  CurrOpNum += 1;
   // Whait for the conditional variable
   while(queue_full(data->buffer)){
     // wait if buffer is full (no space for us to add an operation)
@@ -50,25 +47,25 @@ void produce(void* args, char* tempMsg, char* finalMsg){
   //Save the current operation.
   curOp = data->operations[data->opNum];
   queue_put(data->buffer,&curOp);
+
   //DEBBUGING
-  sprintf(tempMsg,"Current op %d\n",data->opNum);
-  strcat(finalMsg,tempMsg);
-  sprintf(tempMsg,"Current op2 %d\n",CurrOpNum);
-  strcat(finalMsg,tempMsg);
+  //sprintf(tempMsg,"Current op %d\n",data->opNum);
+  //strcat(finalMsg,tempMsg);
+  //sprintf(tempMsg,"Current op2 %d\n",CurrOpNum);
+  //strcat(finalMsg,tempMsg);
   //DEBUGGING 
   
   //DEBBUGING
-  sprintf(tempMsg,"Current produced operation: curOp:  ID: %d OP: %d UNITS:%d\n", curOp.product_id, curOp.op, curOp.units);
-  strcat(finalMsg,tempMsg);
+  //sprintf(tempMsg,"Current produced operation: curOp:  ID: %d OP: %d UNITS:%d\n", curOp.product_id, curOp.op, curOp.units);
+  //strcat(finalMsg,tempMsg);
   //DEBUGGING
 
   // Change the op variable as one operation has been done.
-  pthread_mutex_lock(&Cmutex);
   data -> opNum += 1;
-  pthread_mutex_unlock(&Cmutex);
+  
   //DEBBUGING
-  sprintf(tempMsg,"Added one to the opNum variable\n");
-  strcat(finalMsg,tempMsg);
+  //sprintf(tempMsg,"Added one to the opNum variable\n");
+  //strcat(finalMsg,tempMsg);
   //DEBUGGING
   
 
@@ -77,18 +74,18 @@ void produce(void* args, char* tempMsg, char* finalMsg){
 }
 
 
-void* producer(void* args) {
+void* producer(void* args) { 
   associated_data* data = (associated_data*)args;
   
   //DEBUGGING
-  char finalMsg[6048];
+  //char finalMsg[6048];
   //DEBUGGING
 
   // Each producer has a set number of operations.
   for (int i = 0; i < (data -> ops_per_producer); ++i) {
 
     //DEBUGGING
-    char tempMsg[1024]; // Temporal message to store the sprintf
+    //char tempMsg[1024]; // Temporal message to store the sprintf
     //sprintf(tempMsg,"Producer entering loop for the %d time \n",i);
     //strcat(finalMsg,tempMsg);
     // DEBUGGING
@@ -96,7 +93,7 @@ void* producer(void* args) {
     // lock buffer mutex
     pthread_mutex_lock(&mutex);
     // Critical section, produce
-    produce(data, tempMsg, finalMsg);
+    produce(data);
     // Unlock the buffer mutex
     pthread_mutex_unlock(&mutex);
   }
@@ -107,13 +104,13 @@ void* producer(void* args) {
   while(data-> extra_producers > 0)
   {
     //DEBBUGING
-    char tempMsg[1024]; // Temporal message to store the sprintf
+    //char tempMsg[1024]; // Temporal message to store the sprintf
     //sprintf(tempMsg,"Producer entering extra for the extra %d time \n",data->extra_producers);
     //strcat(finalMsg,tempMsg);
     // DEBBUGING
 
     // Produce
-    produce(data,tempMsg,finalMsg);
+    produce(data);
     // Lower the extra producers needed
     data-> extra_producers --;
   }
@@ -122,7 +119,7 @@ void* producer(void* args) {
 
   // DEBBUGING
   //strcat(finalMsg,"Producer exiting thread\n");
-  printf("%s",finalMsg);
+  //printf("%s",finalMsg);
   // DEBBUGING
 
   pthread_exit(0);
@@ -146,7 +143,7 @@ void computeProfitAndStock(void* args, struct element curOp)
 
 
 // consume function
-void consume(void* args, char* tempMsg, char* finalMsg)
+void consume(void* args)// Add tempMsg and finalMsg as char pointers arguments to debug
 {
   associated_data* data = (associated_data*)args;
   struct element curOp;
@@ -182,13 +179,13 @@ void* consumer(void* args) {
   associated_data* data = (associated_data*)args;
 
   //DEBUGGING
-  char finalMsg[3048];
+  //char finalMsg[3048];
   //DEBUGGING
 
   for (int i = 0; i < (data->ops_per_consumer); ++i) {
     
     //DEBUGGING
-    char tempMsg[1024]; // Temporal message to store the sprintf
+    //char tempMsg[1024]; // Temporal message to store the sprintf
     //sprintf(tempMsg,"Consumer entering loop for the %d time \n",i);
     //strcat(finalMsg,tempMsg);
     // DEBUGGING
@@ -196,7 +193,7 @@ void* consumer(void* args) {
     // lock the mutex on the buffer
     pthread_mutex_lock(&mutex);
     //Consume
-    consume(data,tempMsg,finalMsg);
+    consume(data);
     //Unlock the mutex on the buffer
     pthread_mutex_unlock(&mutex);
 
@@ -206,13 +203,13 @@ void* consumer(void* args) {
   while(data-> extra_consumers >0)
   {
     //DEBBUGING
-    char tempMsg[1024]; // Temporal message to store the sprintf
+    //char tempMsg[1024]; // Temporal message to store the sprintf
     //sprintf(tempMsg,"Consumer entering extra for the extra %d time \n",data->extra_consumers);
     //strcat(finalMsg,tempMsg);
     // DEBBUGING
 
     //Consume
-    consume(data,tempMsg,finalMsg);
+    consume(data);
     //Lower the extra consumers needed
     data -> extra_consumers --;
   }
@@ -309,7 +306,6 @@ int main (int argc, const char * argv[])
 
   // Inizialization of the mutex and conditional variables
   pthread_mutex_init(&mutex, NULL);
-  pthread_mutex_init(&Cmutex,NULL);
   pthread_cond_init(&not_empty, NULL);
   pthread_cond_init(&not_full, NULL);
 
@@ -349,7 +345,6 @@ int main (int argc, const char * argv[])
   
   // Destroy mutex and condition variables
   pthread_mutex_destroy(&mutex);
-  pthread_mutex_destroy(&Cmutex);
   pthread_cond_destroy(&not_empty);
   pthread_cond_destroy(&not_full);
 
