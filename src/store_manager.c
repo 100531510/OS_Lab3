@@ -40,32 +40,36 @@ void produce(void* args, char* tempMsg, char* finalMsg){
   //Get the data from the struct: 
   associated_data* data = (associated_data*)args;
 
-  //Save the current operation.
-  //DEBBUGING
-  sprintf(tempMsg,"Current op %d\n",data->opNum);
-  strcat(finalMsg,tempMsg);
-  sprintf(tempMsg,"Current op2 %d\n",CurrOpNum);
-  strcat(finalMsg,tempMsg);
-  //DEBUGGING 
-  curOp = data->operations[data->opNum];
-
-  //DEBBUGING
-  sprintf(tempMsg,"Current produced operation: curOp:  ID: %d OP: %d UNITS:%d\n", curOp.product_id, curOp.op, curOp.units);
-  strcat(finalMsg,tempMsg);
-  //DEBUGGING
   CurrOpNum += 1;
   // Whait for the conditional variable
   while(queue_full(data->buffer)){
     // wait if buffer is full (no space for us to add an operation)
     pthread_cond_wait(&not_full, &mutex);
   }
+
+  //Save the current operation.
+  curOp = data->operations[data->opNum];
+  queue_put(data->buffer,&curOp);
+  //DEBBUGING
+  sprintf(tempMsg,"Current op %d\n",data->opNum);
+  strcat(finalMsg,tempMsg);
+  sprintf(tempMsg,"Current op2 %d\n",CurrOpNum);
+  strcat(finalMsg,tempMsg);
+  //DEBUGGING 
+  
+  //DEBBUGING
+  sprintf(tempMsg,"Current produced operation: curOp:  ID: %d OP: %d UNITS:%d\n", curOp.product_id, curOp.op, curOp.units);
+  strcat(finalMsg,tempMsg);
+  //DEBUGGING
+
+  // Change the op variable as one operation has been done.
   pthread_mutex_lock(&Cmutex);
   data -> opNum += 1;
   pthread_mutex_unlock(&Cmutex);
-  // re-acquired mutex and checked condition again
-  queue_put(data->buffer,&curOp);
-  // Change the op variable as one operation has been done.
-  
+  //DEBBUGING
+  sprintf(tempMsg,"Added one to the opNum variable\n");
+  strcat(finalMsg,tempMsg);
+  //DEBUGGING
   
 
   // signal that the buffer is not empty
@@ -77,7 +81,7 @@ void* producer(void* args) {
   associated_data* data = (associated_data*)args;
   
   //DEBUGGING
-  char finalMsg[5048];
+  char finalMsg[6048];
   //DEBUGGING
 
   // Each producer has a set number of operations.
