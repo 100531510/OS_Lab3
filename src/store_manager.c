@@ -13,6 +13,7 @@
 #include <sys/wait.h>
 
 pthread_mutex_t mutex;
+pthread_mutex_t Cmutex;
 pthread_cond_t not_full;
 pthread_cond_t not_empty;
 
@@ -25,17 +26,14 @@ typedef struct {
   queue* buffer;
   struct element* operations;
   int num_operations;
-  int num_producers;
-  int num_consumers;
   int ops_per_producer;
   int ops_per_consumer;
-  int op;
   int extra_consumers;
   int extra_producers;
-  // other info to evenly distribute ops across producers
-
+  int opNum;
 } associated_data;
 
+int CurrOpNum = 0;
 // produce function
 void produce(void* args, char* tempMsg, char* finalMsg){
   struct element curOp;
@@ -43,23 +41,32 @@ void produce(void* args, char* tempMsg, char* finalMsg){
   associated_data* data = (associated_data*)args;
 
   //Save the current operation.
-  curOp = data->operations[data->op];
+  //DEBBUGING
+  sprintf(tempMsg,"Current op %d\n",data->opNum);
+  strcat(finalMsg,tempMsg);
+  sprintf(tempMsg,"Current op2 %d\n",CurrOpNum);
+  strcat(finalMsg,tempMsg);
+  //DEBUGGING 
+  curOp = data->operations[data->opNum];
 
   //DEBBUGING
-  //sprintf(tempMsg,"curOp: %d %d %d\n", curOp.product_id, curOp.op, curOp.units);
-  //strcat(finalMsg,tempMsg);
+  sprintf(tempMsg,"Current produced operation: curOp:  ID: %d OP: %d UNITS:%d\n", curOp.product_id, curOp.op, curOp.units);
+  strcat(finalMsg,tempMsg);
   //DEBUGGING
-
+  CurrOpNum += 1;
   // Whait for the conditional variable
   while(queue_full(data->buffer)){
     // wait if buffer is full (no space for us to add an operation)
     pthread_cond_wait(&not_full, &mutex);
   }
-
+  pthread_mutex_lock(&Cmutex);
+  data -> opNum += 1;
+  pthread_mutex_unlock(&Cmutex);
   // re-acquired mutex and checked condition again
   queue_put(data->buffer,&curOp);
   // Change the op variable as one operation has been done.
-  data->op++;
+  
+  
 
   // signal that the buffer is not empty
   pthread_cond_signal(&not_empty);
@@ -70,7 +77,7 @@ void* producer(void* args) {
   associated_data* data = (associated_data*)args;
   
   //DEBUGGING
-  char finalMsg[2028] = "";
+  char finalMsg[5048];
   //DEBUGGING
 
   // Each producer has a set number of operations.
@@ -111,7 +118,7 @@ void* producer(void* args) {
 
   // DEBBUGING
   //strcat(finalMsg,"Producer exiting thread\n");
-  //printf("%s",finalMsg);
+  printf("%s",finalMsg);
   // DEBBUGING
 
   pthread_exit(0);
@@ -171,7 +178,7 @@ void* consumer(void* args) {
   associated_data* data = (associated_data*)args;
 
   //DEBUGGING
-  char finalMsg[2028] = "";
+  char finalMsg[3048];
   //DEBUGGING
 
   for (int i = 0; i < (data->ops_per_consumer); ++i) {
@@ -256,7 +263,10 @@ int main (int argc, const char * argv[])
 
   // use malloc to allocate enought memory for all of those operations
   struct element* operations = (struct element*)malloc(sizeof(struct element)*num_operations);
-
+  if (operations == NULL) {
+    fprintf(stderr, "Failed to allocate memory for operations.\n");
+    exit(1);
+  }
   // ERROR CHECK TO SEE IF MEMORY WAS ALLOCATED CORRECTLY?
 
   // loop through each operation, store the attributes in an element object, and store the element
@@ -279,11 +289,9 @@ int main (int argc, const char * argv[])
   data.buffer = buffer;
   data.operations = operations;
   data.num_operations = num_operations;
-  data.num_consumers = numConsumers;
-  data.num_producers = numProducers;
   data.ops_per_producer = (num_operations / numProducers) ;
   data.ops_per_consumer = (num_operations / numConsumers) ;
-  data.op = 0;
+  data.opNum = 0;
   if (num_operations % numConsumers != 0) {
     data.extra_consumers = num_operations % numConsumers;
   } else {
@@ -297,6 +305,7 @@ int main (int argc, const char * argv[])
 
   // Inizialization of the mutex and conditional variables
   pthread_mutex_init(&mutex, NULL);
+  pthread_mutex_init(&Cmutex,NULL);
   pthread_cond_init(&not_empty, NULL);
   pthread_cond_init(&not_full, NULL);
 
@@ -336,6 +345,7 @@ int main (int argc, const char * argv[])
   
   // Destroy mutex and condition variables
   pthread_mutex_destroy(&mutex);
+  pthread_mutex_destroy(&Cmutex);
   pthread_cond_destroy(&not_empty);
   pthread_cond_destroy(&not_full);
 
