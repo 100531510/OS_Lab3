@@ -7,8 +7,14 @@ rm nota.txt
 rm authors.txt
 echo -e "######################## \n \n \n"
 
-echo -e "TEAM TEST \n  --------------- \n"
-./test_1_test.sh
+read -p "Run team test? y(yes), n(no) : " answer
+
+if [$answer = 'y']; then
+
+    echo -e "TEAM TEST \n  --------------- \n"
+    ./test_1_test.sh
+
+fi
 
 
 
