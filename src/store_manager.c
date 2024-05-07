@@ -36,141 +36,183 @@ typedef struct {
 
 } associated_data;
 
-
 // produce function
+void produce(void* args, char* tempMsg, char* finalMsg){
+  struct element curOp;
+  //Get the data from the struct: 
+  associated_data* data = (associated_data*)args;
+
+  //Save the current operation.
+  curOp = data->operations[data->op];
+
+  //DEBBUGING
+  //sprintf(tempMsg,"curOp: %d %d %d\n", curOp.product_id, curOp.op, curOp.units);
+  //strcat(finalMsg,tempMsg);
+  //DEBUGGING
+
+  // Whait for the conditional variable
+  while(queue_full(data->buffer)){
+    // wait if buffer is full (no space for us to add an operation)
+    pthread_cond_wait(&not_full, &mutex);
+  }
+
+  // re-acquired mutex and checked condition again
+  queue_put(data->buffer,&curOp);
+  // Change the op variable as one operation has been done.
+  data->op++;
+
+  // signal that the buffer is not empty
+  pthread_cond_signal(&not_empty);
+}
+
+
 void* producer(void* args) {
   associated_data* data = (associated_data*)args;
-  struct element curOp;
+  
+  //DEBUGGING
   char finalMsg[2028] = "";
+  //DEBUGGING
 
-  //  Compute the quantity of operations that need to be managed.
-  /* 
-  Each producer is producing one more operation so that no operations are left out in the remainder.
-  Every time a producer does an operation it'll check that the num_operations is not exceeded, that check 
-  needs to be done with a mutex so that no other producer can do the same operation at the same time.
-  */
-
+  // Each producer has a set number of operations.
   for (int i = 0; i < (data -> ops_per_producer); ++i) {
+
+    //DEBUGGING
     char tempMsg[1024]; // Temporal message to store the sprintf
-    sprintf(tempMsg,"Producer entering loop for the %d time \n",i);
-    strcat(finalMsg,tempMsg);
+    //sprintf(tempMsg,"Producer entering loop for the %d time \n",i);
+    //strcat(finalMsg,tempMsg);
+    // DEBUGGING
+
     // lock buffer mutex
     pthread_mutex_lock(&mutex);
-    //Save the current operation in a variable
-    curOp = data->operations[data->op];
-    sprintf(tempMsg,"curOp: %d %d %d\n", curOp.product_id, curOp.op, curOp.units);
-    strcat(finalMsg,tempMsg);
-    while(queue_full(data->buffer)){
-      // wait if buffer is full (no space for us to add an operation)
-      pthread_cond_wait(&not_full, &mutex);
-    }
-
-    // re-acquired mutex and checked condition again
-    queue_put(data->buffer,&curOp);
-    data->op++;
-    // signal that the buffer is not empty
-    pthread_cond_signal(&not_empty);
+    // Critical section, produce
+    produce(data, tempMsg, finalMsg);
+    // Unlock the buffer mutex
     pthread_mutex_unlock(&mutex);
-
   }
   
+  // Lock because the while needs to be protected.
   pthread_mutex_lock(&mutex);
-  if(data->extra_producers > 0){
+  // Produce all the extra one after the other without anyone blocking the resource
+  while(data-> extra_producers > 0)
+  {
+    //DEBBUGING
+    char tempMsg[1024]; // Temporal message to store the sprintf
+    //sprintf(tempMsg,"Producer entering extra for the extra %d time \n",data->extra_producers);
+    //strcat(finalMsg,tempMsg);
+    // DEBBUGING
 
-    for(int i = 0; i < data->extra_producers; i++)
-    {
-      char tempMsg[1024]; // Temporal message to store the sprintf
-      sprintf(tempMsg,"Producer entering extra for the extra %d time \n",data->extra_producers);
-      strcat(finalMsg,tempMsg);
-      //Save the current operation in a variable
-      curOp = data->operations[data->op];
-      sprintf(tempMsg,"curOp: %d %d %d\n", curOp.product_id, curOp.op, curOp.units);
-      strcat(finalMsg,tempMsg);
-      while(queue_full(data->buffer)){
-        // wait if buffer is full (no space for us to add an operation)
-        pthread_cond_wait(&not_full, &mutex);
-      }
-
-      // re-acquired mutex and checked condition again
-      queue_put(data->buffer,&curOp);
-      data->op++;
-      // signal that the buffer is not empty
-      pthread_cond_signal(&not_empty);
-      
-    }
-    
-
+    // Produce
+    produce(data,tempMsg,finalMsg);
+    // Lower the extra producers needed
+    data-> extra_producers --;
   }
+  // Unlock once the while is done.
   pthread_mutex_unlock(&mutex);
 
-  
-  strcat(finalMsg,"Producer exiting loop\n");
-  strcat(finalMsg,"Producer exiting thread\n");
-  printf("%s",finalMsg);
+  // DEBBUGING
+  //strcat(finalMsg,"Producer exiting thread\n");
+  //printf("%s",finalMsg);
+  // DEBBUGING
+
   pthread_exit(0);
 }
 
+void computeProfitAndStock(void* args, struct element curOp)
+{
+  associated_data* data = (associated_data*)args;
+  // compute profit and stock
+    if (curOp.op == 1) {
+      // PURCHASE
+      *data->profits -= (purchaseCosts[curOp.product_id - 1] * curOp.units);
+      data->product_stock[curOp.product_id - 1] += curOp.units; 
+    } else {
+      // SALE
+      *data->profits += (salesPrices[curOp.product_id - 1] * curOp.units);
+      data->product_stock[curOp.product_id - 1] -= curOp.units; 
+    
+    }
+}
+
+
 // consume function
-void* consumer(void* args) {
+void consume(void* args, char* tempMsg, char* finalMsg)
+{
   associated_data* data = (associated_data*)args;
   struct element curOp;
 
+  // Conditional variable
+  while(queue_empty(data->buffer)) {
+      // while the queue is empty wait (we cant retrieve any operatiosn)
+      pthread_cond_wait(&not_empty, &mutex);
+    }
+
+  // once there is an element we can extract it
+  curOp = *(queue_get(data->buffer));
+  
+  //DEBBUGING
+  //sprintf(tempMsg,"curOp: %d %d %d\n", curOp.product_id, curOp.op, curOp.units);
+  //strcat(finalMsg,tempMsg);
+  //DEBUGGING
+
+  
+  //DEBBUGING
+  //sprintf(tempMsg,"Computing profit and stock \n");
+  //strcat(finalMsg,tempMsg);
+  //DEBUGGING
+
+  // Compute the changes in profit and stock
+  computeProfitAndStock(data,curOp);
+
+  // now signal that the queue is not full
+  pthread_cond_signal(&not_full);
+}
+
+void* consumer(void* args) {
+  associated_data* data = (associated_data*)args;
+
+  //DEBUGGING
+  char finalMsg[2028] = "";
+  //DEBUGGING
+
   for (int i = 0; i < (data->ops_per_consumer); ++i) {
-    printf("Consumer entering loop\n");
+    
+    //DEBUGGING
+    char tempMsg[1024]; // Temporal message to store the sprintf
+    //sprintf(tempMsg,"Consumer entering loop for the %d time \n",i);
+    //strcat(finalMsg,tempMsg);
+    // DEBUGGING
+    
     // lock the mutex on the buffer
     pthread_mutex_lock(&mutex);
-    while(queue_empty(data->buffer)) {
-      // while the queue is empty wait (we cant retrieve any operatiosn)
-      pthread_cond_wait(&not_empty, &mutex);
-    }
-    // once there is an element we can extract it
-    curOp = *(queue_get(data->buffer));
-
-    // now signal that the queue is not full
-    pthread_cond_signal(&not_full);
-    
-
-    // compute profit and stock
-    if (curOp.op == 1) {
-      // PURCHASE
-      *data->profits -= (purchaseCosts[curOp.product_id - 1] * curOp.units);
-      data->product_stock[curOp.product_id - 1] += curOp.units; 
-    } else {
-      // SALE
-      *data->profits += (salesPrices[curOp.product_id - 1] * curOp.units);
-      data->product_stock[curOp.product_id - 1] -= curOp.units; 
-      
-    }
+    //Consume
+    consume(data,tempMsg,finalMsg);
+    //Unlock the mutex on the buffer
     pthread_mutex_unlock(&mutex);
-  }
 
+  }
+  // Lock because the while needs to be protected
   pthread_mutex_lock(&mutex);
-  if(data->extra_consumers > 0){
-    for(int i = 0; i < data->extra_consumers; i++){
-    printf("Consumer entering EXTRA LOOP\n");
-    while(queue_empty(data->buffer)) {
-      // while the queue is empty wait (we cant retrieve any operatiosn)
-      pthread_cond_wait(&not_empty, &mutex);
-    }
-    // once there is an element we can extract it
-    curOp = *(queue_get(data->buffer));
-    // now signal that the queue is not full
-    pthread_cond_signal(&not_full);
+  while(data-> extra_consumers >0)
+  {
+    //DEBBUGING
+    char tempMsg[1024]; // Temporal message to store the sprintf
+    //sprintf(tempMsg,"Consumer entering extra for the extra %d time \n",data->extra_consumers);
+    //strcat(finalMsg,tempMsg);
+    // DEBBUGING
 
-    // compute profit and stock
-    if (curOp.op == 1) {
-      // PURCHASE
-      *data->profits -= (purchaseCosts[curOp.product_id - 1] * curOp.units);
-      data->product_stock[curOp.product_id - 1] += curOp.units; 
-    } else {
-      // SALE
-      *data->profits += (salesPrices[curOp.product_id - 1] * curOp.units);
-      data->product_stock[curOp.product_id - 1] -= curOp.units; 
-    }
-    }
+    //Consume
+    consume(data,tempMsg,finalMsg);
+    //Lower the extra consumers needed
+    data -> extra_consumers --;
   }
+  //Unlock once the while is done
   pthread_mutex_unlock(&mutex);
   
+  //DEBBUGING
+  //strcat(finalMsg,"Consumer exiting thread\n");
+  //printf("%s",finalMsg);
+  //DEBBUGING
+
   pthread_exit(0);
 }
 
@@ -190,18 +232,23 @@ int main (int argc, const char * argv[])
 
   const char* file_name = argv[1];
 
-  // Specify the number of producer and consumer threads
+  // GETTING DATA:
+
+  // Number of consumers and producers
   int numProducers = atoi(argv[2]);
   int numConsumers = atoi(argv[3]);
+  // Inizialization of the queue with the correct longitude
   queue* buffer = queue_init(atoi(argv[4]));
-
+  // Open the file given in the input path
   FILE* file = fopen(file_name, "r");
+  //Check for errors while opening the file
   if (file == NULL) {
     perror("Couldn't open file");
     return -1;
   }
 
-  // use scanf to load file
+
+  // LOADING THE FILE:
 
   // first value in file is number of operations
   int num_operations;
@@ -209,6 +256,7 @@ int main (int argc, const char * argv[])
 
   // use malloc to allocate enought memory for all of those operations
   struct element* operations = (struct element*)malloc(sizeof(struct element)*num_operations);
+
   // ERROR CHECK TO SEE IF MEMORY WAS ALLOCATED CORRECTLY?
 
   // loop through each operation, store the attributes in an element object, and store the element
@@ -223,15 +271,7 @@ int main (int argc, const char * argv[])
     }
   }
 
-
-
-  // distribute operations among producer threads
-    // pass parameters to threads in pthread_create
-    // use a structure to pass parameters to threads
-    // distribute evenly by splitting operations over n producers?
-      // producer 0 goes from element 0 to element numOperations/N in operations array
-      // producer 1 goes over the next numOperations/N elements... etc
-
+  // GET DATA INTO STRUCTURE:
 
   associated_data data;
   data.profits = &profits;
@@ -255,32 +295,38 @@ int main (int argc, const char * argv[])
     data.extra_producers = 0;
   }
 
-
+  // Inizialization of the mutex and conditional variables
   pthread_mutex_init(&mutex, NULL);
   pthread_cond_init(&not_empty, NULL);
   pthread_cond_init(&not_full, NULL);
 
- // Create the needed threads based on numConsumers and numProducers.
- // Create an array of threads to initizalise them all at one.
-  pthread_t threads[numConsumers+ numProducers];
+  // Create the needed threads based on numConsumers and numProducers.
+  // Create an array of threads to initizalise them all at one.
+  pthread_t threads[numConsumers + numProducers];
   
   // Create producers:
   for(int i = 0; i < numProducers; i++){
+
+    // Check that the producer was created
     if (pthread_create(&threads[i], NULL, producer, &data) != 0) {
       perror("Error creating producer thread");
       return -1;
     }
-    // Check that the producer was created
-
-    printf("Created producer %d\n", i);
+    //DEBUGGING
+    //printf("Created producer %d\n", i);
+    //DEBUGGING
   }
+
   //Create consumers:
   for(int i = numProducers; i < numConsumers + numProducers; i++){
+    //Check that the consumer was created
     if(pthread_create(&threads[i], NULL, consumer, &data) != 0){
       perror("Error creating consumer thread");
       return -1;
     }
-    printf("Created consumer %d\n", i-numProducers);
+    //DEBUGGING
+    //printf("Created consumer %d\n", i-numProducers);
+    //DEBUGGING
   } 
 
   // Join all threads:
