@@ -260,7 +260,8 @@ int main (int argc, const char * argv[])
 
   // first value in file is number of operations
   int num_operations;
-  fscanf(file, "%d", &num_operations);
+  // Get the numer of operations from the file and check for errors
+  if ((fscanf(file, "%d", &num_operations) < 0)){fprintf(stderr, "Failed to read file.\n");}
 
   // use malloc to allocate enought memory for all of those operations
   struct element* operations = (struct element*)malloc(sizeof(struct element)*num_operations);
@@ -274,8 +275,11 @@ int main (int argc, const char * argv[])
   // in the operations array
   char op[10];
   for (int i = 0; i < num_operations; ++i) {
-    fscanf(file, "%d %s %d", &operations[i].product_id, op, &operations[i].units);
-    if (strcmp(op, "PURCHASE") == 0) {
+    
+    if (fscanf(file, "%d %s %d", &operations[i].product_id, op, &operations[i].units) < 0){
+     fprintf(stderr, "Failed to read file.\n"); 
+    }
+    else if(strcmp(op, "PURCHASE") == 0) {
       operations[i].op = 1;
     } else {
       operations[i].op = 2;
